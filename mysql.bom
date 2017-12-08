@@ -1,0 +1,145 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+brooklyn.catalog:
+  version: "1.0.0-SNAPSHOT" # BROOKLYN_MYSQL_VERSION
+  publish:
+    description: |
+      MySQL is an open-source relational database management system (RDBMS).
+    license_code: Apache-2.0
+    defaults:
+      mysqlIconUrl: "https://www.mysql.com/common/logos/mysql-logo.svg"
+      classpathIconUrl: &mysqlIconUrl 'classpath:///mysql-logo-110x57.png'
+  items:
+  - "https://github.com/brooklyncentral/common-catalog-utils/releases/download/v0.1.0/common.bom"
+  - id: mysql
+    name: "MySQL"
+    description: |
+      MySQL is an open-source relational database management system (RDBMS).
+    itemType: entity
+    iconUrl: *mysqlIconUrl
+    item:
+      id: mysql
+      name: "MySQL"
+      type: centos7-software-process
+      brooklyn.parameters:
+      - name: mysql.port
+        label: "MySQL Port"
+        description: |
+          The MySQL port
+        type: integer
+        default: 3306
+      - name: mysql.datadir
+        label: "Data Directory"
+        description: |
+          The data directory to use
+        type: string
+      - name: datastore.creation.script.url
+        label: "Datastore Creation Script URL"
+        description: |
+          A URL to an SQL script to create the datastore
+        type: string
+      - name: mysql.password
+        label: "MySQL Root Password"
+        description: |
+          The root password to the MySQL server
+        type: string
+        default: s0M3r4nd0mPwd
+      - name: mysql.init
+        label: "Initialise MySQL"
+        description: |
+          If we should Initialise MySQL
+        type: boolean
+        default: true
+      
+      brooklyn.enrichers:
+        - type: org.apache.brooklyn.enricher.stock.Transformer
+          brooklyn.config:
+            enricher.triggerSensors:
+              - $brooklyn:sensor("host.name")
+              - $brooklyn:sensor("mysql.port")
+            enricher.targetSensor: $brooklyn:sensor("datastore.url")
+            enricher.targetValue: $brooklyn:formatString("mysql://%s:%s/", $brooklyn:attributeWhenReady("host.name"), $brooklyn:config("mysql.port"))
+   
+      brooklyn.config:
+        shell.env:
+          MYSQL_PORT: $brooklyn:config("mysql.port")
+          MYSQL_INIT: $brooklyn:config("mysql.init")
+          MYSQL_PASSWORD: $brooklyn:config("mysql.password")
+          DATA_DIRECTORY: $brooklyn:config("mysql.datadir")
+          DATASTORE_CREATION_SCRIPT_URL: $brooklyn:config("datastore.creation.script.url")
+        install.command: |
+          sudo yum update -y
+          sudo yum install -y wget nano
+          wget http://dev.mysql.com/get/mysql57-community-release-el7-9.noarch.rpm
+          sudo rpm -Uvh mysql57-community-release-el7-9.noarch.rpm
+          sudo yum install -y mysql-server
+          
+        customize.command: |
+          sudo service mysqld stop || true
+          sudo semanage port -a -t mysqld_port_t -p tcp ${MYSQL_PORT} || true
+          if [ -n "${DATA_DIRECTORY}" ]; then
+            # add the selinux policy to allow a data dir
+            sudo semanage fcontext -a -t mysqld_db_t "${DATA_DIRECTORY}(/.*)?"
+            sudo mkdir -p ${DATA_DIRECTORY}
+            sudo chown -R mysql:mysql ${DATA_DIRECTORY}
+            sudo restorecon -Rv ${DATA_DIRECTORY}
+            sudo sed  -i "s|^datadir=.*$|datadir=${DATA_DIRECTORY}|g" /etc/my.cnf
+          else
+            DATA_DIRECTORY="/var/lib/mysql"
+          fi
+          
+          if [ -z "${MYSQL_INIT}" ] || [ "${MYSQL_INIT}" == "true" ]; then
+            echo "Initialise MySQL directory"
+            # remove the mysql files that may be there otherwise
+            sudo find ${DATA_DIRECTORY}/ -mindepth 1 -delete
+            sudo tee /tmp/init.sql <<-EOF
+          ALTER USER 'root'@'localhost' IDENTIFIED BY '${MYSQL_PASSWORD}';
+          EOF
+            sudo /usr/sbin/mysqld --initialize-insecure --init-file=/tmp/init.sql --user=mysql
+            sudo rm /tmp/init.sql
+          fi
+          
+          if [ -n "${DATASTORE_CREATION_SCRIPT_URL}" ]; then
+            wget -O /tmp/creation.sql ${DATASTORE_CREATION_SCRIPT_URL}
+            # fix bug https://bugs.mysql.com/bug.php?id=38513
+            sed -i '1s/^/flush privileges;\n /' /tmp/creation.sql
+            sudo service mysqld start
+            sudo mysql -uroot -p${MYSQL_PASSWORD} < /tmp/creation.sql
+            sudo rm /tmp/creation.sql
+            sudo service mysqld stop
+          fi
+        launch.command: |
+          sudo /sbin/service mysqld start
+        stop.command: |
+          sudo /sbin/service mysqld stop
+        checkRunning.command: |
+          sudo /sbin/service mysqld status
+          
+  - id: mysql-template
+    type: org.apache.brooklyn.entity.stock.BasicApplication
+    version: "1.0.0-SNAPSHOT" # BROOKLYN_MYSQL_VERSION
+    name: MySQL
+    description: |
+      MySQL is an open-source relational database management system (RDBMS).
+    itemType: template
+    iconUrl: *mysqlIconUrl
+    license: Apache-2.0
+    item:
+      type: mysql
+      
