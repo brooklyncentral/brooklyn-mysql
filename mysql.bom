@@ -95,10 +95,10 @@ brooklyn.catalog:
           sudo semanage port -a -t mysqld_port_t -p tcp ${MYSQL_PORT} || true
           if [ -n "${DATA_DIRECTORY}" ]; then
             # add the selinux policy to allow a data dir
-            sudo semanage fcontext -a -t mysqld_db_t "${DATA_DIRECTORY}(/.*)?"
+            sudo semanage fcontext -a -t mysqld_db_t "${DATA_DIRECTORY}(/.*)?" || true
             sudo mkdir -p ${DATA_DIRECTORY}
             sudo chown -R mysql:mysql ${DATA_DIRECTORY}
-            sudo restorecon -Rv ${DATA_DIRECTORY}
+            sudo restorecon -Rv ${DATA_DIRECTORY} || true
             sudo sed  -i "s|^datadir=.*$|datadir=${DATA_DIRECTORY}|g" /etc/my.cnf
           else
             DATA_DIRECTORY="/var/lib/mysql"
