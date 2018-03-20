@@ -133,7 +133,6 @@ brooklyn.catalog:
           
   - id: mysql-template
     type: org.apache.brooklyn.entity.stock.BasicApplication
-    version: "1.0.0-SNAPSHOT" # BROOKLYN_MYSQL_VERSION
     name: MySQL
     description: |
       MySQL is an open-source relational database management system (RDBMS).

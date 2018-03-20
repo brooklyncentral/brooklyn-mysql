@@ -1,3 +1,5 @@
 brooklyn.catalog:
+  bundle: brooklyn-mysql
+  version: "1.0.0-SNAPSHOT" # BROOKLYN_MYSQL_VERSION
   items:
   - classpath://mysql.bom
